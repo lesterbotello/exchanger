@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/exchanger.iml" filepath="$PROJECT_DIR$/exchanger.iml" />
+      <module fileurl="file://$PROJECT_DIR$/android/exchanger_android.iml" filepath="$PROJECT_DIR$/android/exchanger_android.iml" />
+    </modules>
+  </component>
+</project>
