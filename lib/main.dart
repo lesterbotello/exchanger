@@ -3,6 +3,8 @@ import 'package:http/http.dart';
 import 'support/currency.dart';
 import 'support/strings.dart';
 import 'dart:convert';
+import 'dart:math';
+import 'package:intl/intl.dart';
 
 void main() => runApp(MyApp());
 
@@ -38,7 +40,8 @@ class _ExchangeFormState extends State<ExchangeForm> {
     List<String> _currencies;
     Currency _mainCurrency;
     var _result = "0.0";
-    LoadState loadState = LoadState.Loading; // Initial load state of the app...
+    LoadState _loadState = LoadState.Loading; // Initial load state of the app...
+    Color _resultBackgroundColor, _resultContrastColor;
 
     Future<Response> fetchCurrencies(){
       return get('http://data.fixer.io/api/latest?access_key=${Strings.apiKey}');
@@ -51,14 +54,14 @@ class _ExchangeFormState extends State<ExchangeForm> {
         var c = Currency.fromJson(json.decode(response.body));
 
         if(c.success){
-          loadState = LoadState.Loaded;
+          _loadState = LoadState.Loaded;
           return c;
         } else {
-          loadState = LoadState.Error;
+          _loadState = LoadState.Error;
           return null;
         }
       } else {
-        loadState = LoadState.Error;
+        _loadState = LoadState.Error;
         return null;
       }
     }
@@ -66,12 +69,18 @@ class _ExchangeFormState extends State<ExchangeForm> {
     @override
     void initState() {
       super.initState();
+      loadCurrencies();
+    }
 
-      getCurrencies().then((result) {
+    void loadCurrencies() {
+      setState(() => _loadState = LoadState.Loading);
+
+      getCurrencies().then((result) {        
         _mainCurrency = result;
-
+      
         setState(() {
-          if(loadState == LoadState.Loaded && _mainCurrency != null){
+          if(_loadState == LoadState.Loaded && _mainCurrency != null){
+            randomizeResultColor();
             _currencies = _mainCurrency.rates.keys.toList();
             _selectedCurrency = _currencies[0];
           }
@@ -79,9 +88,15 @@ class _ExchangeFormState extends State<ExchangeForm> {
       });
     }
 
+    void randomizeResultColor() {
+      var rgb = getRandomColor();
+      _resultBackgroundColor = Color.fromARGB(255, rgb[0], rgb[1], rgb[2]);
+      _resultContrastColor = getContrastColor(rgb[0], rgb[1], rgb[2]);
+    }
+
     @override
     Widget build(BuildContext context) {
-      switch (loadState) {
+      switch (_loadState) {
         case LoadState.Loading:
           return loadingDialog();  
         case LoadState.Error:
@@ -101,7 +116,8 @@ class _ExchangeFormState extends State<ExchangeForm> {
           padding: EdgeInsets.all(15.0),
           child:Column(
             children: <Widget>[
-              Padding(
+              Flexible(flex: 1,
+              child: Padding(
                 padding: EdgeInsets.only(top: fieldMargin, bottom: fieldMargin),
                 child: Row(children: <Widget>[
                   Expanded(
@@ -120,29 +136,62 @@ class _ExchangeFormState extends State<ExchangeForm> {
                   ),
                 Container(width: fieldMargin * 2),
                 Expanded(
-                  child: DropdownButton<String>(
-                  items: _currencies.map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Container(child: Text(value), width: 150.0),
-                    );
-                  }).toList(),
-                  value: _selectedCurrency,
-                  hint: Text("Convert to"),
-                  onChanged: (String value) => onCurrencyChanged(value)),
+                  child: Container(
+                    padding: EdgeInsets.only(left: 5.0, top: 4.0, right: 1.0, bottom: 4.0),
+                    decoration: ShapeDecoration(
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(width: 1.0, style: BorderStyle.solid), borderRadius: BorderRadius.all(Radius.circular((5.0)))
+                      )
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        items: _currencies.map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Container(child: Text(value), width: 150.0),
+                        );
+                      }).toList(),
+                    value: _selectedCurrency,
+                    hint: Text("Convert to"),
+                    onChanged: (String value) => onCurrencyChanged(value)),
+                  ))
                 ),
-              ]),),
-              Padding(
-                padding: EdgeInsets.only(top: fieldMargin + 40, bottom: fieldMargin),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(child: Center(child: Text(_result, textScaleFactor: 3)))
-                  ],
+              ]),)),
+              Flexible(flex: 6,
+                child: AnimatedContainer(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.all(Radius.circular(20.0)),
+                    color: _resultBackgroundColor,
+                  ),
+                  duration: Duration(milliseconds: 500),
+                  child: Padding(
+                  padding: EdgeInsets.only(top: fieldMargin + 40, bottom: fieldMargin),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Expanded(child: Center(child: 
+                        Text(
+                            _result, 
+                            textScaleFactor: 3,
+                            style: TextStyle(color: _resultContrastColor)
+                          )
+                        ))
+                    ],
+                  )
+                ),
+              )),
+              Flexible(
+                child: Container(),
+                flex: 1
                 )
-              ,)
             ],
           )
-        )
+        ),
+        floatingActionButton: FloatingActionButton(
+          child: Icon(Icons.refresh),
+          onPressed: () => loadCurrencies(),
+        ),
       );
     }
 
@@ -174,6 +223,7 @@ class _ExchangeFormState extends State<ExchangeForm> {
     }
 
     onCurrencyChanged(String value) => setState(() {
+      randomizeResultColor();
       _selectedCurrency = value;
       _result = convert(_selectedCurrency);
     });
@@ -183,8 +233,21 @@ class _ExchangeFormState extends State<ExchangeForm> {
     String convert(String selectedCurrency){
       var v = _mainCurrency.rates[selectedCurrency];
       var amt = double.parse(amountController.text == "" ? "0" : amountController.text);
+      final frmt = NumberFormat("#,###.##");
 
-      return selectedCurrency + (v * amt).toStringAsFixed(2);
+      return selectedCurrency + "\$" + frmt.format((v * amt));
+    }
+
+    List<int> getRandomColor(){
+      var rnd = Random();
+      return [rnd.nextInt(256), rnd.nextInt(256), rnd.nextInt(256)];
+    }
+
+    // Based on the W3C's standard formula for calculating perceived brightness...
+    // More info: https://www.w3.org/TR/AERT/#color-contrast
+    Color getContrastColor(int r, int g, int b){
+      var i = (r * .299) + (g * .587) + (b * .114);
+      return i > 186 ? Colors.black : Colors.white;
     }
   }
 
